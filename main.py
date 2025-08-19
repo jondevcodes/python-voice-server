@@ -221,18 +221,26 @@ async def main():
     # Add WebSocket route
     async def websocket_handler(request):
         """Handle WebSocket upgrade requests"""
+        print(f"🔍 WebSocket request received: {request.path}")
+        print(f"📋 Headers: {dict(request.headers)}")
+        
         # Check if this is a WebSocket upgrade request
         if 'Upgrade' in request.headers and request.headers['Upgrade'].lower() == 'websocket':
+            print("✅ WebSocket upgrade detected")
             ws = web.WebSocketResponse()
             await ws.prepare(request)
+            print("✅ WebSocket prepared successfully")
             
             if request.path == '/twilio':
+                print("🎯 Calling twilio_handler")
                 await twilio_handler(ws)
             else:
+                print(f"❌ Unknown path: {request.path}")
                 await ws.close()
             
             return ws
         else:
+            print("❌ Not a WebSocket upgrade request")
             # Return a helpful message for non-WebSocket requests
             return web.Response(
                 text="This endpoint requires a WebSocket connection.\nUse: wss://python-voice-server.onrender.com/twilio",
