@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import sys
 import websockets
 from aiohttp import web
 from dotenv import load_dotenv
@@ -10,24 +11,61 @@ from restaurant_functions import function_map
 # Load environment variables
 load_dotenv()
 
+# Synchronous logging function
+def log(message):
+    print(message, flush=True)
+    sys.stdout.flush()
+
+async def validate_deepgram_key():
+    """Validate Deepgram API key on startup"""
+    api_key = os.getenv('DEEPGRAM_API_KEY')
+    if not api_key:
+        log("❌ CRITICAL: DEEPGRAM_API_KEY not found")
+        return False
+    
+    test_url = "https://api.deepgram.com/v1/projects"
+    try:
+        import aiohttp
+        async with aiohttp.ClientSession() as session:
+            async with session.get(test_url, 
+                                 headers={"Authorization": f"Token {api_key}"}) as resp:
+                if resp.status != 200:
+                    log(f"❌ CRITICAL: Invalid Deepgram key (Status {resp.status})")
+                    return False
+                else:
+                    log("✅ Deepgram API key validated")
+                    return True
+    except Exception as e:
+        log(f"❌ CRITICAL: Deepgram validation failed: {e}")
+        return False
+
 async def sts_connect():
     """Connect to Deepgram Voice Agent API"""
     api_key = os.getenv('DEEPGRAM_API_KEY')
     if not api_key:
-        print("❌ DEEPGRAM_API_KEY not found in environment variables")
+        log("❌ DEEPGRAM_API_KEY not found in environment variables")
         raise Exception("DEEPGRAM_API_KEY not found")
     
-    print(f"🔑 Connecting to Deepgram with API key: {api_key[:10]}...")
+    log(f"🔑 Connecting to Deepgram with API key: {api_key[:10]}...")
     
     try:
         sts_ws = await websockets.connect(
             'wss://agent.deepgram.com/v1/agent/converse',
-            subprotocols=['token', api_key]
+            extra_headers={
+                "Authorization": f"Token {api_key}",
+                "Sec-WebSocket-Protocol": "token"  # REQUIRED HEADER
+            }
         )
-        print("✅ Successfully connected to Deepgram")
+        log("✅ Successfully connected to Deepgram")
         return sts_ws
+    except websockets.exceptions.InvalidStatusCode as e:
+        log(f"❌ Deepgram authentication failed: {e}")
+        raise
+    except websockets.exceptions.ConnectionClosed as e:
+        log(f"🚨 Deepgram connection closed: {e.code} - {e.reason}")
+        raise
     except Exception as e:
-        print(f"❌ Failed to connect to Deepgram: {e}")
+        log(f"❌ Failed to connect to Deepgram: {e}")
         raise e
 
 def load_config():
@@ -127,32 +165,35 @@ async def twilio_receiver(twilio_ws, audio_q, streams_id_q):
 
 async def twilio_handler(twilio_ws):
     """Main handler for Twilio WebSocket connections"""
-    print("🔗 New Twilio WebSocket connection received")
+    log("🔗 New Twilio WebSocket connection received")
     audio_q = asyncio.Queue()
     streams_id_q = asyncio.Queue()
     
     # Connect to Deepgram
-    print("🔄 Connecting to Deepgram...")
+    log("🔄 Connecting to Deepgram...")
     sts_ws = await sts_connect()
     try:
         # Send configuration to Deepgram
-        print("📤 Sending configuration to Deepgram...")
+        log("📤 Sending configuration to Deepgram...")
         config_message = load_config()
         await sts_ws.send(json.dumps(config_message))
-        print("✅ Configuration sent to Deepgram")
+        log("✅ Configuration sent to Deepgram")
         
         # Start all background tasks
-        print("🚀 Starting background tasks...")
+        log("🚀 Starting background tasks...")
         await asyncio.wait([
             asyncio.ensure_future(sts_sender(sts_ws, audio_q)),
             asyncio.ensure_future(sts_receiver(sts_ws, twilio_ws, streams_id_q)),
             asyncio.ensure_future(twilio_receiver(twilio_ws, audio_q, streams_id_q))
         ])
+    except websockets.exceptions.ConnectionClosed as e:
+        log(f"🚨 Deepgram connection closed during operation: {e.code} - {e.reason}")
+        raise e
     except Exception as e:
-        print(f"❌ Error in twilio_handler: {e}")
+        log(f"❌ Error in twilio_handler: {e}")
         raise e
     finally:
-        print("🔌 Closing connections...")
+        log("🔌 Closing connections...")
         await sts_ws.close()
         await twilio_ws.close()
 
@@ -208,12 +249,18 @@ def create_function_call_response(func_id, func_name, result):
 async def main():
     """Start the server with both HTTP and WebSocket support"""
     
+    # Validate Deepgram API key on startup
+    log("🔍 Validating Deepgram API key...")
+    if not await validate_deepgram_key():
+        log("❌ CRITICAL: Deepgram API key validation failed. Exiting.")
+        sys.exit(1)
+    
     # Create HTTP app
     app = web.Application()
     
     async def health_check(request):
         """Health check endpoint"""
-        print(f"🌐 HTTP request to {request.path} from {request.remote}")
+        log(f"🌐 HTTP request to {request.path} from {request.remote}")
         
         # Test environment variables
         deepgram_key = os.getenv('DEEPGRAM_API_KEY')
@@ -236,27 +283,27 @@ async def main():
     # Add WebSocket route
     async def websocket_handler(request):
         """Handle WebSocket upgrade requests"""
-        print(f"🔍 WebSocket request received: {request.path}")
-        print(f"📋 Headers: {dict(request.headers)}")
-        print(f"🌐 Remote: {request.remote}")
+        log(f"🔍 WebSocket request received: {request.path}")
+        log(f"📋 Headers: {dict(request.headers)}")
+        log(f"🌐 Remote: {request.remote}")
         
         # Check if this is a WebSocket upgrade request
         if 'Upgrade' in request.headers and request.headers['Upgrade'].lower() == 'websocket':
-            print("✅ WebSocket upgrade detected")
+            log("✅ WebSocket upgrade detected")
             ws = web.WebSocketResponse()
             await ws.prepare(request)
-            print("✅ WebSocket prepared successfully")
+            log("✅ WebSocket prepared successfully")
             
             if request.path == '/twilio':
-                print("🎯 Calling twilio_handler")
+                log("🎯 Calling twilio_handler")
                 await twilio_handler(ws)
             else:
-                print(f"❌ Unknown path: {request.path}")
+                log(f"❌ Unknown path: {request.path}")
                 await ws.close()
             
             return ws
         else:
-            print("❌ Not a WebSocket upgrade request")
+            log("❌ Not a WebSocket upgrade request")
             # Return a helpful message for non-WebSocket requests
             return web.Response(
                 text="This endpoint requires a WebSocket connection.\nUse: wss://python-voice-server.onrender.com/twilio",
@@ -271,9 +318,9 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', 5000)
     await site.start()
     
-    print("🚀 Restaurant Voice Server started on port 5000!")
-    print("🌐 Health check: https://python-voice-server.onrender.com/")
-    print("📡 WebSocket endpoint: wss://python-voice-server.onrender.com/twilio")
+    log("🚀 Restaurant Voice Server started on port 5000!")
+    log("🌐 Health check: https://python-voice-server.onrender.com/")
+    log("📡 WebSocket endpoint: wss://python-voice-server.onrender.com/twilio")
     
     await asyncio.Future()  # Run forever
 
