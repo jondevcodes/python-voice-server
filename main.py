@@ -80,25 +80,31 @@ async def twilio_receiver(twilio_ws, audio_q, streams_id_q):
     
     async for message in twilio_ws:
         try:
-            data = json.loads(message)
-            event = data['event']
-            
-            if event == 'start':
-                start = data['start']
-                streams_id = start['streamSid']
-                await streams_id_q.put(streams_id)
+            # Handle aiohttp WebSocket messages
+            if message.type == web.WSMsgType.TEXT:
+                data = json.loads(message.data)
+                event = data['event']
                 
-            elif event == 'connected':
-                continue
-                
-            elif event == 'media':
-                media = data['media']
-                chunk = base64.b64decode(media['payload'])
-                
-                if media['track'] == 'inbound':
-                    in_buffer += chunk
+                if event == 'start':
+                    start = data['start']
+                    streams_id = start['streamSid']
+                    await streams_id_q.put(streams_id)
                     
-            elif event == 'stop':
+                elif event == 'connected':
+                    continue
+                    
+                elif event == 'media':
+                    media = data['media']
+                    chunk = base64.b64decode(media['payload'])
+                    
+                    if media['track'] == 'inbound':
+                        in_buffer += chunk
+                        
+                elif event == 'stop':
+                    break
+                    
+            elif message.type == web.WSMsgType.ERROR:
+                print(f"WebSocket error: {message.data}")
                 break
                 
         except Exception as e:
