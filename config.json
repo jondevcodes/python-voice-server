@@ -1,0 +1,72 @@
+{
+  "type": "settings",
+  "audio": {
+    "input_encoding": "mulaw",
+    "output_encoding": "mulaw",
+    "sample_rate": 8000
+  },
+  "agent": {
+    "language": "en",
+    "provider": "deepgram",
+    "model": "nova-3"
+  },
+  "thinking": {
+    "provider": "openai",
+    "model": "gpt-4o-mini"
+  },
+  "prompt": "You are a professional restaurant assistant at Myrtle Beach Seafood & Grill. You can help customers with menu information, placing orders, and checking order status. When placing orders, always ask users to spell out their full name clearly and confirm all order details before proceeding. You can look up menu items, place new orders, and check existing order status. Always be friendly, professional, and helpful. Confirm all details including customer name, items ordered, and total price before finalizing any order.",
+  "speaking": {
+    "provider": "deepgram",
+    "model": "aura-asteria-en",
+    "voice": "asteria"
+  },
+  "greeting": "Hello, welcome to Myrtle Beach Seafood & Grill! I can help you with menu information, placing orders, and checking order status. When placing orders, I'll need your full name spelled out clearly and will confirm all details with you. How can I assist you today?",
+  "functions": [
+    {
+      "name": "get_menu_item",
+      "description": "Get detailed information about a specific menu item. Use this function when a customer asks about menu items, pricing, or ingredients.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "item_name": {
+            "type": "string",
+            "description": "Name of the menu item to look up (convert to lowercase for matching)"
+          }
+        },
+        "required": ["item_name"]
+      }
+    },
+    {
+      "name": "place_order",
+      "description": "Place a new order for a customer. Use this function when a customer wants to place an order.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "customer_name": {
+            "type": "string",
+            "description": "Full name of the customer placing the order"
+          },
+          "item_name": {
+            "type": "string",
+            "description": "Name of the menu item being ordered"
+          }
+        },
+        "required": ["customer_name", "item_name"]
+      }
+    },
+    {
+      "name": "lookup_order",
+      "description": "Look up an existing order by ID. Use this function when a customer wants to check their order status.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "order_id": {
+            "type": "string",
+            "description": "Order ID to look up"
+          }
+        },
+        "required": ["order_id"]
+      }
+    }
+  ]
+}
