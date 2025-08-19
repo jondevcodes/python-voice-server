@@ -3,6 +3,7 @@ import base64
 import json
 import os
 import websockets
+from aiohttp import web
 from dotenv import load_dotenv
 from restaurant_functions import function_map
 
@@ -179,9 +180,51 @@ def create_function_call_response(func_id, func_name, result):
     }
 
 async def main():
-    """Start the WebSocket server"""
-    await websockets.serve(twilio_handler, '0.0.0.0', 5000)
-    print("🚀 Restaurant Voice Server started on port 5000")
+    """Start the server with both HTTP and WebSocket support"""
+    
+    # Create HTTP app
+    app = web.Application()
+    
+    async def health_check(request):
+        """Health check endpoint"""
+        return web.Response(text="🚀 Restaurant Voice Server is running!\n📡 WebSocket: wss://python-voice-server.onrender.com/twilio")
+    
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    
+    # Add WebSocket route
+    async def websocket_handler(request):
+        """Handle WebSocket upgrade requests"""
+        # Check if this is a WebSocket upgrade request
+        if 'Upgrade' in request.headers and request.headers['Upgrade'].lower() == 'websocket':
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            
+            if request.path == '/twilio':
+                await twilio_handler(ws)
+            else:
+                await ws.close()
+            
+            return ws
+        else:
+            # Return a helpful message for non-WebSocket requests
+            return web.Response(
+                text="This endpoint requires a WebSocket connection.\nUse: wss://python-voice-server.onrender.com/twilio",
+                status=426
+            )
+    
+    app.router.add_get('/twilio', websocket_handler)
+    
+    # Start server
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', 5000)
+    await site.start()
+    
+    print("🚀 Restaurant Voice Server started on port 5000!")
+    print("🌐 Health check: https://python-voice-server.onrender.com/")
+    print("📡 WebSocket endpoint: wss://python-voice-server.onrender.com/twilio")
+    
     await asyncio.Future()  # Run forever
 
 if __name__ == "__main__":
