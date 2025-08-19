@@ -116,7 +116,9 @@ async def twilio_handler(twilio_ws):
     audio_q = asyncio.Queue()
     streams_id_q = asyncio.Queue()
     
-    async with await sts_connect() as sts_ws:
+    # Connect to Deepgram
+    sts_ws = await sts_connect()
+    try:
         # Send configuration to Deepgram
         config_message = load_config()
         await sts_ws.send(json.dumps(config_message))
@@ -127,8 +129,9 @@ async def twilio_handler(twilio_ws):
             asyncio.ensure_future(sts_receiver(sts_ws, twilio_ws, streams_id_q)),
             asyncio.ensure_future(twilio_receiver(twilio_ws, audio_q, streams_id_q))
         ])
-    
-    await twilio_ws.close()
+    finally:
+        await sts_ws.close()
+        await twilio_ws.close()
 
 async def handle_function_call_request(decoded, sts_ws):
     """Handle function call requests from Deepgram"""
