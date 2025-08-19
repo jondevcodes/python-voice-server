@@ -213,7 +213,22 @@ async def main():
     
     async def health_check(request):
         """Health check endpoint"""
-        return web.Response(text="🚀 Restaurant Voice Server is running!\n📡 WebSocket: wss://python-voice-server.onrender.com/twilio")
+        print(f"🌐 HTTP request to {request.path} from {request.remote}")
+        
+        # Test environment variables
+        deepgram_key = os.getenv('DEEPGRAM_API_KEY')
+        supabase_url = os.getenv('SUPABASE_URL')
+        supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
+        
+        status = f"""🚀 Restaurant Voice Server is running!
+📡 WebSocket: wss://python-voice-server.onrender.com/twilio
+
+🔑 Environment Variables:
+- DEEPGRAM_API_KEY: {'✅ Set' if deepgram_key else '❌ Missing'} ({len(deepgram_key) if deepgram_key else 0} chars)
+- SUPABASE_URL: {'✅ Set' if supabase_url else '❌ Missing'} ({len(supabase_url) if supabase_url else 0} chars)
+- SUPABASE_SERVICE_ROLE_KEY: {'✅ Set' if supabase_key else '❌ Missing'} ({len(supabase_key) if supabase_key else 0} chars)
+"""
+        return web.Response(text=status)
     
     app.router.add_get('/', health_check)
     app.router.add_get('/health', health_check)
@@ -223,6 +238,7 @@ async def main():
         """Handle WebSocket upgrade requests"""
         print(f"🔍 WebSocket request received: {request.path}")
         print(f"📋 Headers: {dict(request.headers)}")
+        print(f"🌐 Remote: {request.remote}")
         
         # Check if this is a WebSocket upgrade request
         if 'Upgrade' in request.headers and request.headers['Upgrade'].lower() == 'websocket':
