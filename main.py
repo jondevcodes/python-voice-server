@@ -280,6 +280,32 @@ async def main():
     app.router.add_get('/', health_check)
     app.router.add_get('/health', health_check)
     
+    # Add simple test WebSocket endpoint
+    async def test_websocket_handler(request):
+        """Simple test WebSocket endpoint"""
+        log(f"🧪 Test WebSocket request received: {request.path}")
+        
+        if 'Upgrade' in request.headers and request.headers['Upgrade'].lower() == 'websocket':
+            log("✅ Test WebSocket upgrade detected")
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            log("✅ Test WebSocket prepared successfully")
+            
+            # Send immediate response
+            response = {
+                "event": "connected",
+                "message": "Test WebSocket connection successful"
+            }
+            await ws.send_str(json.dumps(response))
+            log("✅ Test response sent")
+            
+            await ws.close()
+            return ws
+        else:
+            return web.Response(text="Test WebSocket endpoint", status=426)
+    
+    app.router.add_get('/test', test_websocket_handler)
+    
     # Add WebSocket route
     async def websocket_handler(request):
         """Handle WebSocket upgrade requests"""
@@ -296,7 +322,20 @@ async def main():
             
             if request.path == '/twilio':
                 log("🎯 Calling twilio_handler")
-                await twilio_handler(ws)
+                try:
+                    await twilio_handler(ws)
+                except Exception as e:
+                    log(f"❌ Error in twilio_handler: {e}")
+                    # Send error response to Twilio
+                    error_response = {
+                        "event": "error",
+                        "error": {
+                            "code": "WEBSOCKET_ERROR",
+                            "message": str(e)
+                        }
+                    }
+                    await ws.send_str(json.dumps(error_response))
+                    await ws.close()
             else:
                 log(f"❌ Unknown path: {request.path}")
                 await ws.close()
