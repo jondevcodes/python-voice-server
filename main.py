@@ -14,13 +14,21 @@ async def sts_connect():
     """Connect to Deepgram Voice Agent API"""
     api_key = os.getenv('DEEPGRAM_API_KEY')
     if not api_key:
+        print("❌ DEEPGRAM_API_KEY not found in environment variables")
         raise Exception("DEEPGRAM_API_KEY not found")
     
-    sts_ws = await websockets.connect(
-        'wss://agent.deepgram.com/v1/agent/converse',
-        subprotocols=['token', api_key]
-    )
-    return sts_ws
+    print(f"🔑 Connecting to Deepgram with API key: {api_key[:10]}...")
+    
+    try:
+        sts_ws = await websockets.connect(
+            'wss://agent.deepgram.com/v1/agent/converse',
+            subprotocols=['token', api_key]
+        )
+        print("✅ Successfully connected to Deepgram")
+        return sts_ws
+    except Exception as e:
+        print(f"❌ Failed to connect to Deepgram: {e}")
+        raise e
 
 def load_config():
     """Load the voice agent configuration"""
@@ -119,23 +127,32 @@ async def twilio_receiver(twilio_ws, audio_q, streams_id_q):
 
 async def twilio_handler(twilio_ws):
     """Main handler for Twilio WebSocket connections"""
+    print("🔗 New Twilio WebSocket connection received")
     audio_q = asyncio.Queue()
     streams_id_q = asyncio.Queue()
     
     # Connect to Deepgram
+    print("🔄 Connecting to Deepgram...")
     sts_ws = await sts_connect()
     try:
         # Send configuration to Deepgram
+        print("📤 Sending configuration to Deepgram...")
         config_message = load_config()
         await sts_ws.send(json.dumps(config_message))
+        print("✅ Configuration sent to Deepgram")
         
         # Start all background tasks
+        print("🚀 Starting background tasks...")
         await asyncio.wait([
             asyncio.ensure_future(sts_sender(sts_ws, audio_q)),
             asyncio.ensure_future(sts_receiver(sts_ws, twilio_ws, streams_id_q)),
             asyncio.ensure_future(twilio_receiver(twilio_ws, audio_q, streams_id_q))
         ])
+    except Exception as e:
+        print(f"❌ Error in twilio_handler: {e}")
+        raise e
     finally:
+        print("🔌 Closing connections...")
         await sts_ws.close()
         await twilio_ws.close()
 
